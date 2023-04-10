@@ -9,30 +9,10 @@ if __name__ == "__main__":
     # Create a new chat completion
     openai.api_key = os.getenv("OPENAI_API_KEY")
     conn = connect_db('DB/TextDatabase.db')
+    base_instruction = open("prompts/base_instruction.txt", "r").read()
+    
     message_history = [
-        {"role": "system", "content": 
-"""You are a personal assistant. Your responsibility is to answer questions and help the user with their tasks. You have access to your own memory, called Personal Storage Database (PSDB), which is a sqlite3 database created using the command: `CREATE TABLE messages (name, content)`. You can perform the following actions:
-
-1. Save information in the PSDB using the format `database save: INSERT INTO messages VALUES ('name', 'content')`
-2. Retrieve information from the PSDB using the format `database request: <sql request>`
-
-When responding to a user's request, please structure your response as follows:
-
-`response to use: <answer> [must be the first line]
-[if necessary]database request: <sql request>
-[if necessary]database save: <sql request>`
-
-You don't need to include SQL requests if they're not necessary. Here are some examples:
-
-1. User: 'My favorite color is red. Please remember it.'
-Your response: 'Your favorite color has been recorded.\ndatabase save: INSERT INTO messages VALUES ('color', 'red')'
-
-2. User: 'What is my favorite color? Check in PSDB.'
-Your response: 'I'll send a request to the database to find out.\ndatabase request: SELECT content FROM messages WHERE name = 'color''
-
-Keep in mind that this is not your first time using PSDB, so some information about the user might already be stored there. Feel free to use that information to answer the user's questions.
-"""
-}]
+        {"role": "system", "content": base_instruction}]
 
     while True:
         message = input("Enter your message: ")
@@ -43,14 +23,25 @@ Keep in mind that this is not your first time using PSDB, so some information ab
             retry_count = 0
             while retry_count < 3:
                 try:
-                    response = chat_complete(message, message_history)
+                    response = chat_complete(message, message_history, "user")
                     message_history.append({"role": "user", "content": message})
                     assistant_response = response['choices'][0]['message']['content']
-                    print(assistant_response)
+                    search_results, save_flag, request_flag = process_database_requests(assistant_response, conn)
                     message_history.append({"role": "assistant", "content": assistant_response})
-                    search_results = process_database_requests(assistant_response, conn)
-                    if search_results:
-                        print("Search results:", search_results)
+                    if save_flag:
+                        save_message = "Database updated. now you can tell the user about it."
+                        response_save = chat_complete(save_message, message_history, "system")['choices'][0]['message']['content']
+                        message_history.append({"role": "system", "content": save_message})
+                        message_history.append({"role": "assistant", "content": response_save})
+                        print(response_save)
+                    elif request_flag:
+                        request_message = "the command has been executed, here are the results: {}".format(search_results)
+                        request_response = chat_complete(request_message, message_history, "system")['choices'][0]['message']['content']
+                        message_history.append({"role": "system", "content": request_message})
+                        message_history.append({"role": "assistant", "content": request_response})
+                        print(request_response)
+                    else:
+                        print(assistant_response)
                     break
                 except Exception as e:
                     print("Error:", e)

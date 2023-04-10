@@ -23,13 +23,15 @@ def write_db(conn, name, content):
     conn.commit()
 
 def process_database_requests(response, conn):
+    save_flag = False
+    request_flag = False
     save_pattern = r"database save: (.*)(?=\s|$)"
     request_pattern = r"database request: (.*)(?=\s|$)"
     
     save_matches = re.findall(save_pattern, response)
     for match in save_matches:
         sql = match.strip()
-        print(sql)
+        save_flag = True
         cursor = conn.cursor()
         cursor.execute(sql)
         conn.commit()
@@ -37,9 +39,9 @@ def process_database_requests(response, conn):
     search_results = []
     for match in request_matches:
         sql = match.strip()
-        print(sql)
+        request_flag = True
         cursor = conn.cursor()
         cursor.execute(sql)
         results = cursor.fetchall()
         search_results.extend(results)
-    return search_results
+    return search_results, save_flag, request_flag
